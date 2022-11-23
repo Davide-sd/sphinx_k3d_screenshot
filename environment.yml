@@ -1,0 +1,13 @@
+name: myenv
+channels:
+  - anaconda
+  - conda-forge
+dependencies:
+  - selenium
+  - webdriver-manager
+  - k3d
+  - sphinx
+  - pillow
+  - pip
+  - pip:
+    - -e .
