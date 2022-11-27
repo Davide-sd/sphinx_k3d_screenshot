@@ -643,6 +643,7 @@ def render_figures(code, code_path, output_dir, output_base, context,
         # generate pictures
         if ((setup.config.k3d_screenshot_browser is None) or
             (setup.config.k3d_screenshot_browser == "chrome")):
+            logging.info("Browser: Chrome")
             options = webdriver.ChromeOptions()
             options.headless = True
             options.add_argument("--disable-dev-shm-usage"); # overcome limited resource problems
@@ -651,9 +652,11 @@ def render_figures(code, code_path, output_dir, output_base, context,
                 driver_path = setup.config.k3d_screenshot_driver_path
             else:
                 driver_path = ChromeDriverManager().install()
+            logging.info("driver_path: %s", driver_path)
             service = ChromeService(driver_path)
             Browser = webdriver.Chrome
         else:
+            logging.info("Browser: Firefox")
             options = webdriver.FirefoxOptions()
             # options.headless = True   # doesn't work...
             options.add_argument("--headless")
@@ -661,15 +664,19 @@ def render_figures(code, code_path, output_dir, output_base, context,
                 driver_path = setup.config.k3d_screenshot_driver_path
             else:
                 driver_path = GeckoDriverManager().install()
+            logging.info("driver_path: %s", driver_path)
             service = FirefoxService(driver_path)
             Browser = webdriver.Firefox
 
         
         if setup.config.k3d_screenshot_browser_path is not None:
+            logging.info("Setting browser path to options: %s", setup.config.k3d_screenshot_browser_path)
             options.binary_location = setup.config.k3d_screenshot_browser_path
 
         # define a headless browser
+        logging.info("Instantiating browser")
         driver = Browser(service=service, options=options)
+        logging.info("Browser is ready")
         driver.set_window_position(0, 0)
 
         def get_img(filename, size):
