@@ -194,6 +194,7 @@ from selenium.webdriver.common.by import By
 from PIL import Image as PILImage
 from io import BytesIO
 import types
+import logging
 
 
 # -----------------------------------------------------------------------------
@@ -315,6 +316,8 @@ def setup(app):
     app.add_config_value("k3d_screenshot_browser_path", None, True)
     app.add_config_value("k3d_screenshot_driver_path", None, True)
     app.add_config_value("k3d_screenshot_browser", None, True)
+    app.add_config_value("logging_path", None, True)
+    app.add_config_value("logging_level", None, True)
     app.connect('doctree-read', mark_plot_labels)
     metadata = {'parallel_read_safe': True, 'parallel_write_safe': True,
                 'version': sphinx_k3d_screenshot.__version__}
@@ -452,6 +455,9 @@ def _run_code(code, code_path, ns=None, function_name=None, camera=None):
     Import a Python module from a path, and run the function given by
     name, if function_name is not None.
     """
+    logging.info("Input code:")
+    logging.info("\n%s" % code)
+
     intercept_code = setup.config.k3d_screenshot_intercept_code
     if intercept_code is None:
         intercept_code = lambda x: x
@@ -462,6 +468,9 @@ def _run_code(code, code_path, ns=None, function_name=None, camera=None):
     code = assign_last_line_into_variable(intercept_code(code))
     if camera is not None:
         code = set_camera_position(code, camera)
+
+    logging.info("Modified code:")
+    logging.info("\n%s" % code)
 
     # Change the working directory to the directory of the example, so
     # it can get at its data files, if any.  Add its path to sys.path
@@ -620,7 +629,6 @@ def render_figures(code, code_path, output_dir, output_base, context,
         with open(img.filename("html"), "w") as f:
             k3d_obj.snapshot_include_js = False
             f.write(k3d_obj.get_snapshot())
-            # f.write(get_snapshot(k3d_obj))
         # also, save an html file without k3d menu, which is too big for small
         # png screenshots
         htmlfile_no_menu = img.filename("html").replace(".html", "-small.html")
@@ -628,8 +636,10 @@ def render_figures(code, code_path, output_dir, output_base, context,
             k3d_obj.menu_visibility = False
             k3d_obj.snapshot_include_js = False
             f.write(k3d_obj.get_snapshot())
-            # f.write(get_snapshot(k3d_obj))
 
+        logging.info("k3d_screenshot_browser: %s" % setup.config.k3d_screenshot_browser)
+        logging.info("k3d_screenshot_browser_path: %s" % setup.config.k3d_screenshot_browser_path)
+        logging.info("k3d_screenshot_driver_path: %s" % setup.config.k3d_screenshot_driver_path)
         # generate pictures
         if ((setup.config.k3d_screenshot_browser is None) or
             (setup.config.k3d_screenshot_browser == "chrome")):
@@ -712,6 +722,25 @@ def render_figures(code, code_path, output_dir, output_base, context,
 
 
 def run(arguments, content, options, state_machine, state, lineno):
+    
+    logging_path = setup.config.logging_path
+    if not logging_path:
+        home_folder = os.path.expanduser("~")
+        logging_path = os.path.join(home_folder, 'selenium/sphinx_k3d_screenshot.log')
+    logging_level = setup.config.logging_level
+    if not logging_level:
+        logging_level = logging.INFO
+    logging.basicConfig(
+        filename=logging_path,
+        encoding='utf-8',
+        level=logging_level,
+        format='%(levelname)s:%(asctime)s: %(message)s',
+        datefmt='%m/%d/%Y %I:%M:%S %p',
+        filemode="w"
+    )
+    logging.info("Entry run()")
+    logging.info("Options are: %s" % options)
+
     document = state_machine.document
     config = document.settings.env.config
     nofigs = 'nofigs' in options
@@ -849,9 +878,9 @@ def run(arguments, content, options, state_machine, state, lineno):
             config,
             context_reset=context_opt == 'reset',
             code_includes=source_file_includes,
-            small_size=options["small-size"] if "small-size" in options.keys() else None,
-            large_size=options["large-size"] if "large-size" in options.keys() else None,
-            camera=options["camera"] if "camera" in options.keys() else None
+            small_size=options.get("small-size", None),
+            large_size=options.get("large-size", None),
+            camera=options.get("camera", None)
         )
         errors = []
     except PlotError as err:
