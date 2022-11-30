@@ -193,9 +193,10 @@ from selenium.webdriver.firefox.service import Service as FirefoxService
 from selenium.webdriver.common.by import By
 from PIL import Image as PILImage
 from io import BytesIO
-import types
 import logging
-
+from k3d.headless import k3d_remote
+import socket
+from contextlib import closing
 
 # -----------------------------------------------------------------------------
 # Registration hook
@@ -465,12 +466,6 @@ def _run_code(code, code_path, ns=None, function_name=None, camera=None):
         raise TypeError("`k3d_screenshot_intercept_code` must be a function "
             "accepting one argument (the current code block being "
             "processed), returning a modified code.")
-    code = assign_last_line_into_variable(intercept_code(code))
-    if camera is not None:
-        code = set_camera_position(code, camera)
-
-    logging.info("Modified code:")
-    logging.info("\n%s" % code)
 
     # Change the working directory to the directory of the example, so
     # it can get at its data files, if any.  Add its path to sys.path
@@ -506,9 +501,20 @@ def _run_code(code, code_path, ns=None, function_name=None, camera=None):
         if "__main__" in code:
             ns['__name__'] = '__main__'
 
-        exec(code, ns)
-        if function_name is not None:
-            exec("myk3d = " + function_name + "()", ns)
+        if function_name is None:
+            code = assign_last_line_into_variable(intercept_code(code))
+            if camera is not None:
+                code = set_camera_position(code, camera)
+            exec(code, ns)
+        else:
+            exec(code, ns)
+            code = "myk3d = " + function_name + "()"
+            if camera is not None:
+                code = set_camera_position(code, camera)
+            exec(code, ns)
+    
+        logging.info("Modified code:")
+        logging.info("\n%s" % code)
 
     except (Exception, SystemExit) as err:
         raise PlotError(traceback.format_exc()) from err
@@ -518,7 +524,7 @@ def _run_code(code, code_path, ns=None, function_name=None, camera=None):
 
 
 def get_k3d_screenshot_formats(config):
-    default_dpi = {'small.png': 80, 'large.png': 200, 'pdf': None, 'html': None}
+    default_dpi = {'small.png': 80, 'large.png': 200, 'pdf': 200, 'html': None}
     formats = []
     k3d_screenshot_formats = config.k3d_screenshot_formats
     for fmt in k3d_screenshot_formats:
@@ -538,6 +544,58 @@ def get_k3d_screenshot_formats(config):
             "%s\n" % list(default_dpi.keys()) +
             "\nReceived: %s" % k3d_screenshot_formats)
     return formats
+
+
+def get_driver(browser, browser_path, driver_path):
+    logging.info("k3d_screenshot_browser: %s" % browser)
+    logging.info("k3d_screenshot_browser_path: %s" % browser_path)
+    logging.info("k3d_screenshot_driver_path: %s" % driver_path)
+
+    # generate pictures
+    if (browser is None) or (browser == "chrome"):
+        logging.info("Browser: Chrome")
+        options = webdriver.ChromeOptions()
+        options.headless = True
+        options.add_argument("--disable-dev-shm-usage"); # overcome limited resource problems
+        options.add_argument("--no-sandbox") # Bypass OS security model
+        if driver_path is not None:
+            driver_path = driver_path
+        else:
+            driver_path = ChromeDriverManager().install()
+        logging.info("driver_path: %s", driver_path)
+        service = ChromeService(driver_path)
+        Browser = webdriver.Chrome
+    else:
+        logging.info("Browser: Firefox")
+        options = webdriver.FirefoxOptions()
+        # options.headless = True   # doesn't work...
+        options.add_argument("--headless")
+        if driver_path is not None:
+            driver_path = driver_path
+        else:
+            driver_path = GeckoDriverManager().install()
+        logging.info("driver_path: %s", driver_path)
+        service = FirefoxService(driver_path)
+        Browser = webdriver.Firefox
+    
+    if browser_path is not None:
+        logging.info("Setting browser path to options: %s", browser_path)
+        options.binary_location = browser_path
+
+    # define a headless browser
+    logging.info("Instantiating browser")
+    driver = Browser(service=service, options=options)
+    logging.info("Browser is ready")
+    driver.set_window_position(0, 0)
+    return driver
+
+
+def get_port():
+    # https://stackoverflow.com/a/45690594/2329968
+    with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as s:
+        s.bind(('', 0))
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        return s.getsockname()[1]
 
 
 def render_figures(code, code_path, output_dir, output_base, context,
@@ -624,102 +682,51 @@ def render_figures(code, code_path, output_dir, output_base, context,
         # TODO: can it be done better?
         fmts = [t[0] for t in formats]
         formats = {t[0]: t[1] for t in formats}
-
-        # first, save an html file
-        with open(img.filename("html"), "w") as f:
-            k3d_obj.snapshot_include_js = False
-            f.write(k3d_obj.get_snapshot())
-        # also, save an html file without k3d menu, which is too big for small
-        # png screenshots
-        htmlfile_no_menu = img.filename("html").replace(".html", "-small.html")
-        with open(htmlfile_no_menu, "w") as f:
-            k3d_obj.menu_visibility = False
-            k3d_obj.snapshot_include_js = False
-            f.write(k3d_obj.get_snapshot())
-
-        logging.info("k3d_screenshot_browser: %s" % setup.config.k3d_screenshot_browser)
-        logging.info("k3d_screenshot_browser_path: %s" % setup.config.k3d_screenshot_browser_path)
-        logging.info("k3d_screenshot_driver_path: %s" % setup.config.k3d_screenshot_driver_path)
-        # generate pictures
-        if ((setup.config.k3d_screenshot_browser is None) or
-            (setup.config.k3d_screenshot_browser == "chrome")):
-            logging.info("Browser: Chrome")
-            options = webdriver.ChromeOptions()
-            options.headless = True
-            options.add_argument("--disable-dev-shm-usage"); # overcome limited resource problems
-            options.add_argument("--no-sandbox") # Bypass OS security model
-            if setup.config.k3d_screenshot_driver_path is not None:
-                driver_path = setup.config.k3d_screenshot_driver_path
-            else:
-                driver_path = ChromeDriverManager().install()
-            logging.info("driver_path: %s", driver_path)
-            service = ChromeService(driver_path)
-            Browser = webdriver.Chrome
-        else:
-            logging.info("Browser: Firefox")
-            options = webdriver.FirefoxOptions()
-            # options.headless = True   # doesn't work...
-            options.add_argument("--headless")
-            if setup.config.k3d_screenshot_driver_path is not None:
-                driver_path = setup.config.k3d_screenshot_driver_path
-            else:
-                driver_path = GeckoDriverManager().install()
-            logging.info("driver_path: %s", driver_path)
-            service = FirefoxService(driver_path)
-            Browser = webdriver.Firefox
-
-        
-        if setup.config.k3d_screenshot_browser_path is not None:
-            logging.info("Setting browser path to options: %s", setup.config.k3d_screenshot_browser_path)
-            options.binary_location = setup.config.k3d_screenshot_browser_path
-
-        # define a headless browser
-        logging.info("Instantiating browser")
-        driver = Browser(service=service, options=options)
-        logging.info("Browser is ready")
-        driver.set_window_position(0, 0)
-
-        def get_img(filename, size):
-            # load html file into the browser
-            driver.get('file://' + filename)
-            driver.set_window_size(*size)
-
-            # NOTE: there is a bug with K3D-Jupyter. If the camera is set, then
-            # axis labels won't be rendered on headless browsers. To force them
-            # to become visible, just scroll in and out by the same amout.
-            # Just to be safe, let's execute this commands anyway.
-            canvas = driver.find_element(By.ID, "canvasTarget")
-            wheel_element(canvas, -120)
-            wheel_element(canvas, 120)
-
-            png = driver.get_screenshot_as_png()
-            return PILImage.open(BytesIO(png))
-        
+        # turns off menu visibility for image screenshots
+        k3d_obj.menu_visibility = False
         pil_image = None
         spng, lpng, pdf, html = "small.png", "large.png", "pdf", "html"
 
+        def get_img(size):
+            driver = get_driver(
+                setup.config.k3d_screenshot_browser,
+                setup.config.k3d_screenshot_browser_path,
+                setup.config.k3d_screenshot_driver_path
+            )
+            headless = k3d_remote(k3d_obj, driver, port=get_port(),
+                width=size[0], height=size[1])
+            headless.sync()
+            img = PILImage.open(BytesIO(headless.get_browser_screenshot()))
+            headless.close()
+            driver.quit()
+            return img
+
         if (spng in fmts) or (pdf in fmts):
-            pil_image = get_img(htmlfile_no_menu, small_size)
+            pil_image = get_img(small_size)
             if spng in fmts:
                 dpi = formats[spng]
                 pil_image.save(img.filename(spng), dpi=(dpi, dpi))
                 img.formats.append(spng)
 
         if (lpng in fmts) or (pdf in fmts):
-            pil_image = get_img(img.filename("html"), large_size)
+            pil_image = get_img(large_size)
             if lpng in fmts:
                 dpi = formats[lpng]
                 pil_image.save(img.filename(lpng), dpi=(dpi, dpi))
                 img.formats.append(lpng)
         
         if html in fmts:
+            html_file = img.filename("html")
+            with open(html_file, "w") as f:
+                k3d_obj.menu_visibility = True
+                k3d_obj.snapshot_include_js = False
+                f.write(k3d_obj.get_snapshot())
             img.formats.append(html)
 
         if pdf in fmts:
-            pil_image.convert('RGB').save(img.filename(pdf))
+            pil_image.convert('RGB').save(img.filename(pdf), resolution=dpi)
             img.formats.append(pdf)
-        
-        driver.quit()
+
     except Exception as err:
         raise PlotError(traceback.format_exc()) from err
 

@@ -65,3 +65,5 @@ k3d_screenshot_browser = "chrome"
 home_folder = os.path.expanduser("~")
 k3d_screenshot_browser_path = os.path.join(home_folder, "selenium/chrome-linux/chrome")
 k3d_screenshot_driver_path = os.path.join(home_folder, "selenium/drivers/chromedriver")
+k3d_screenshot_formats = ['small.png', 'large.png', 'html', 'pdf']
+k3d_screenshot_large_size = [1280, 720]

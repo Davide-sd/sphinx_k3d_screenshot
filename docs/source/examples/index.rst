@@ -104,6 +104,7 @@ return a K3D plot.
 
 
 .. k3d-screenshot:: examples/example.py func
+   :camera: 0.033, 0.041, 0.046, 0.05, 0.042, 0.048, -0.167, 0.746, 0.645
 
 
 include-source
