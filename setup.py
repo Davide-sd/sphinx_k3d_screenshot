@@ -37,6 +37,7 @@ setup(
         "webdriver_manager",
         "sphinx",
         "pillow",
+        "flask",
     ],
     extras_require={
         "dev": [

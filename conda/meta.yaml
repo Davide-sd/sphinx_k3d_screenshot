@@ -22,6 +22,7 @@ requirements:
     - webdriver-manager
     - sphinx
     - pillow
+    - flask
 
 about:
   home: {{ data['url'] }}
