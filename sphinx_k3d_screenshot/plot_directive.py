@@ -163,6 +163,15 @@ The k3d-screenshot directive has the following configuration options:
     k3d_screenshot_driver_path : str or None
         Specify the path to the driver executable. If not provided, selenium
         will attempt to execute the driver from the system path.
+    
+    k3d_screenshot_camera_factor : float
+        The screenshot engine is able to maintain the specified camera
+        orientation, however the actual screenshot might look a little bit
+        different than what would be seen in Jupyter. Specifically, it might
+        look like the camera has been zoomed out of the scene. This parameter
+        can be though as a zoom factor: the lower the value, the more zoomed
+        in the screenshot will be. Default value 1.5.
+
 """
 
 import doctest
@@ -317,8 +326,9 @@ def setup(app):
     app.add_config_value("k3d_screenshot_browser_path", None, True)
     app.add_config_value("k3d_screenshot_driver_path", None, True)
     app.add_config_value("k3d_screenshot_browser", None, True)
-    app.add_config_value("logging_path", None, True)
-    app.add_config_value("logging_level", None, True)
+    app.add_config_value("k3d_screenshot_logging_path", None, True)
+    app.add_config_value("k3d_screenshot_logging_level", None, True)
+    app.add_config_value("k3d_screenshot_camera_factor", None, True)
     app.connect('doctree-read', mark_plot_labels)
     metadata = {'parallel_read_safe': True, 'parallel_write_safe': True,
                 'version': sphinx_k3d_screenshot.__version__}
@@ -693,9 +703,13 @@ def render_figures(code, code_path, output_dir, output_base, context,
                 setup.config.k3d_screenshot_browser_path,
                 setup.config.k3d_screenshot_driver_path
             )
+            cf = setup.config.k3d_screenshot_camera_factor
+            if cf is None:
+                cf = 1.5
             headless = k3d_remote(k3d_obj, driver, port=get_port(),
                 width=size[0], height=size[1])
             headless.sync()
+            headless.camera_reset(cf)
             img = PILImage.open(BytesIO(headless.get_browser_screenshot()))
             headless.close()
             driver.quit()
@@ -737,11 +751,11 @@ def render_figures(code, code_path, output_dir, output_base, context,
 
 def run(arguments, content, options, state_machine, state, lineno):
     
-    logging_path = setup.config.logging_path
+    logging_path = setup.config.k3d_screenshot_logging_path
     if not logging_path:
         home_folder = os.path.expanduser("~")
         logging_path = os.path.join(home_folder, 'selenium/sphinx_k3d_screenshot.log')
-    logging_level = setup.config.logging_level
+    logging_level = setup.config.k3d_screenshot_logging_level
     if not logging_level:
         logging_level = logging.INFO
     logging.basicConfig(
