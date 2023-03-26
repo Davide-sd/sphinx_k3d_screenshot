@@ -38,6 +38,7 @@ setup(
         "sphinx",
         "pillow",
         "flask",
+        "ipykernel"
     ],
     extras_require={
         "dev": [

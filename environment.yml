@@ -8,6 +8,7 @@ dependencies:
   - k3d
   - sphinx
   - pillow
+  - ipykernel
   - pip
   - pip:
     - -e .
