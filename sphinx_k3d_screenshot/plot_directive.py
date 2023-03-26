@@ -164,6 +164,14 @@ The k3d-screenshot directive has the following configuration options:
         Specify the path to the driver executable. If not provided, selenium
         will attempt to execute the driver from the system path.
     
+    k3d_screenshot_driver_options : list/tuple
+        A list of strings to be added to the browser options with the
+        ``add_argument`` method. Default to empty list.
+    
+    k3d_screenshot_modify_driver : callable or None
+        A user-defined function, f(driver), to further customize the browser
+        behavior before taking a new screenshot.
+    
     k3d_screenshot_camera_factor : float
         The screenshot engine is able to maintain the specified camera
         orientation, however the actual screenshot might look a little bit
@@ -171,6 +179,12 @@ The k3d-screenshot directive has the following configuration options:
         look like the camera has been zoomed out of the scene. This parameter
         can be though as a zoom factor: the lower the value, the more zoomed
         in the screenshot will be. Default value 1.5.
+    
+    k3d_screenshot_logging_path : str, optional
+        Default to ``/home/selenium/sphinx_k3d_screenshot.log``
+    
+    k3d_screenshot_logging_level : 
+        Default to logging.INFO.
 
 """
 
@@ -191,21 +205,10 @@ import jinja2  # Sphinx dependency.
 
 import sphinx_k3d_screenshot
 from sphinx_k3d_screenshot.utils import (
-    assign_last_line_into_variable, set_camera_position, wheel_element
+    assign_last_line_into_variable, set_camera_position,
+    get_driver, get_k3d_screenshot
 )
-
-from selenium import webdriver
-from webdriver_manager.chrome import ChromeDriverManager
-from webdriver_manager.firefox import GeckoDriverManager
-from selenium.webdriver.chrome.service import Service as ChromeService
-from selenium.webdriver.firefox.service import Service as FirefoxService
-from selenium.webdriver.common.by import By
-from PIL import Image as PILImage
-from io import BytesIO
 import logging
-from k3d.headless import k3d_remote
-import socket
-from contextlib import closing
 
 # -----------------------------------------------------------------------------
 # Registration hook
@@ -325,6 +328,8 @@ def setup(app):
     app.add_config_value("k3d_screenshot_large_size", None, True)
     app.add_config_value("k3d_screenshot_browser_path", None, True)
     app.add_config_value("k3d_screenshot_driver_path", None, True)
+    app.add_config_value("k3d_screenshot_driver_options", None, [])
+    app.add_config_value("k3d_screenshot_modify_driver", None, None)
     app.add_config_value("k3d_screenshot_browser", None, True)
     app.add_config_value("k3d_screenshot_logging_path", None, True)
     app.add_config_value("k3d_screenshot_logging_level", None, True)
@@ -556,56 +561,7 @@ def get_k3d_screenshot_formats(config):
     return formats
 
 
-def get_driver(browser, browser_path, driver_path):
-    logging.info("k3d_screenshot_browser: %s" % browser)
-    logging.info("k3d_screenshot_browser_path: %s" % browser_path)
-    logging.info("k3d_screenshot_driver_path: %s" % driver_path)
 
-    # generate pictures
-    if (browser is None) or (browser == "chrome"):
-        logging.info("Browser: Chrome")
-        options = webdriver.ChromeOptions()
-        options.headless = True
-        options.add_argument("--disable-dev-shm-usage"); # overcome limited resource problems
-        options.add_argument("--no-sandbox") # Bypass OS security model
-        if driver_path is not None:
-            driver_path = driver_path
-        else:
-            driver_path = ChromeDriverManager().install()
-        logging.info("driver_path: %s", driver_path)
-        service = ChromeService(driver_path)
-        Browser = webdriver.Chrome
-    else:
-        logging.info("Browser: Firefox")
-        options = webdriver.FirefoxOptions()
-        # options.headless = True   # doesn't work...
-        options.add_argument("--headless")
-        if driver_path is not None:
-            driver_path = driver_path
-        else:
-            driver_path = GeckoDriverManager().install()
-        logging.info("driver_path: %s", driver_path)
-        service = FirefoxService(driver_path)
-        Browser = webdriver.Firefox
-    
-    if browser_path is not None:
-        logging.info("Setting browser path to options: %s", browser_path)
-        options.binary_location = browser_path
-
-    # define a headless browser
-    logging.info("Instantiating browser")
-    driver = Browser(service=service, options=options)
-    logging.info("Browser is ready")
-    driver.set_window_position(0, 0)
-    return driver
-
-
-def get_port():
-    # https://stackoverflow.com/a/45690594/2329968
-    with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as s:
-        s.bind(('', 0))
-        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        return s.getsockname()[1]
 
 
 def render_figures(code, code_path, output_dir, output_base, context,
@@ -697,33 +653,26 @@ def render_figures(code, code_path, output_dir, output_base, context,
         pil_image = None
         spng, lpng, pdf, html = "small.png", "large.png", "pdf", "html"
 
-        def get_img(size):
-            driver = get_driver(
-                setup.config.k3d_screenshot_browser,
-                setup.config.k3d_screenshot_browser_path,
-                setup.config.k3d_screenshot_driver_path
-            )
-            cf = setup.config.k3d_screenshot_camera_factor
-            if cf is None:
-                cf = 1.5
-            headless = k3d_remote(k3d_obj, driver, port=get_port(),
-                width=size[0], height=size[1])
-            headless.sync()
-            headless.camera_reset(cf)
-            img = PILImage.open(BytesIO(headless.get_browser_screenshot()))
-            headless.close()
-            driver.quit()
-            return img
+        driver = lambda: get_driver(
+            setup.config.k3d_screenshot_browser,
+            setup.config.k3d_screenshot_browser_path,
+            setup.config.k3d_screenshot_driver_path,
+            setup.config.k3d_screenshot_driver_options
+        )
+        cf = setup.config.k3d_screenshot_camera_factor
+        modify_driver = setup.config.k3d_screenshot_modify_driver
 
         if (spng in fmts) or (pdf in fmts):
-            pil_image = get_img(small_size)
+            d = driver() if not modify_driver else modify_driver(driver())
+            pil_image = get_k3d_screenshot(d, small_size, k3d_obj, cf)
             if spng in fmts:
                 dpi = formats[spng]
                 pil_image.save(img.filename(spng), dpi=(dpi, dpi))
                 img.formats.append(spng)
 
         if (lpng in fmts) or (pdf in fmts):
-            pil_image = get_img(large_size)
+            d = driver() if not modify_driver else modify_driver(driver())
+            pil_image = get_k3d_screenshot(d, large_size, k3d_obj, cf)
             if lpng in fmts:
                 dpi = formats[lpng]
                 pil_image.save(img.filename(lpng), dpi=(dpi, dpi))
@@ -766,7 +715,7 @@ def run(arguments, content, options, state_machine, state, lineno):
         datefmt='%m/%d/%Y %I:%M:%S %p',
         filemode="w"
     )
-    logging.info("Entry run()")
+    logging.info("sphinx_k3d_screenshot: entry run()")
     logging.info("Options are: %s" % options)
 
     document = state_machine.document

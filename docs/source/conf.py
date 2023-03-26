@@ -65,6 +65,22 @@ k3d_screenshot_browser = "chrome"
 home_folder = os.path.expanduser("~")
 k3d_screenshot_browser_path = os.path.join(home_folder, "selenium/chrome-linux/chrome")
 k3d_screenshot_driver_path = os.path.join(home_folder, "selenium/drivers/chromedriver")
+k3d_screenshot_driver_options = [
+    "--headless",
+    "--disable-dev-shm-usage",  # overcome limited resource problems
+    "--no-sandbox"              # Bypass OS security model
+]
 k3d_screenshot_formats = ['small.png', 'large.png', 'html', 'pdf']
 k3d_screenshot_large_size = [1280, 720]
 k3d_screenshot_camera_factor = 1
+
+# k3d_screenshot_browser = "firefox"
+# home_folder = os.path.expanduser("~")
+# k3d_screenshot_browser_path = os.path.join(home_folder, "selenium/firefox/firefox")
+# k3d_screenshot_driver_path = os.path.join(home_folder, "selenium/drivers/geckodriver")
+# k3d_screenshot_driver_options = [
+#     "--headless"
+# ]
+# k3d_screenshot_formats = ['small.png', 'large.png', 'html', 'pdf']
+# k3d_screenshot_large_size = [1280, 720]
+# k3d_screenshot_camera_factor = 1

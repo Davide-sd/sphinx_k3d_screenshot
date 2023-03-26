@@ -3,7 +3,8 @@ import os
 import pytest
 
 from sphinx_k3d_screenshot.utils import (
-    assign_last_line_into_variable, set_camera_position
+    assign_last_line_into_variable, set_camera_position,
+    get_port
 )
 
 def test_assign_last_line_into_variable_1():
@@ -36,3 +37,6 @@ def test_set_camera_position():
     assert (("myk3d.camera = [1, 2, 3, 4, 5, 6, 7, 8, 9]" in new_code) or
         ("myk3d.camera=[1, 2, 3, 4, 5, 6, 7, 8, 9]" in new_code))
     assert "myk3d.render()" in new_code
+
+def test_get_port():
+    assert get_port() is not None

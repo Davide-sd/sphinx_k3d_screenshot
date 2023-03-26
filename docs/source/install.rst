@@ -55,3 +55,5 @@ variables:
     home_folder = os.path.expanduser("~")
     k3d_screenshot_browser_path = os.path.join(home_folder, "selenium/chrome-linux/chrome")
     k3d_screenshot_driver_path = os.path.join(home_folder, "selenium/drivers/chromedriver")
+    # run browser in headless mode
+    k3d_screenshot_driver_options = ["--headless"]
